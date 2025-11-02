@@ -1,0 +1,52 @@
+# === Fuente de datos ===
+data:
+  # Elegí una:
+  # source: "crypto"     # usa Binance vía ccxt
+  source: "yahoo" # usa Yahoo Finance (yfinance)
+
+  # --- Si usás CRYPTO (descomentar si cambiás a crypto) ---
+  # symbol: "BTC/USDT"
+  # exchange: "binance"
+  # timeframe: "1h"       # 1h, 4h, d
+  # interval: "1h"        # no se usa en crypto, pero se mantiene por compat
+  # start: "2023-01-01"
+  # end: null
+  # limit: 5000
+
+  # --- Si usás YAHOO ---
+  symbol: "SPY"
+  interval: "1h" # 1m/5m/15m/1h/1d/1wk/1mo (según Yahoo)
+  start: "2023-01-01"
+  end: null
+
+  # Comunes
+  csv_path: "data/BTCUSDT_1h.csv" # ruta local donde se guarda el CSV
+  auto_fetch: true
+  timeframe: "1h" # para el resample interno
+  datetime_col: "datetime"
+  tz: "UTC"
+
+# === Indicadores / señales (valores ejemplo) ===
+signals:
+  rsi:
+    period: 14
+  ema:
+    fast: 12
+    slow: 26
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+
+# === Backtest ===
+backtest:
+  cash: 10000
+  commission: 0.001
+  printlog: false
+
+# === Riesgo (ejemplo) ===
+risk:
+  stop_loss_pct: 0.03
+  take_profit_pct: 0.06
+  time_stop_bars: 48
+  partial_tp: false
