@@ -1,245 +1,140 @@
-# src/main.py
 import os
 from datetime import datetime
 from pathlib import Path
-from fastapi import (
-    FastAPI, UploadFile, File, HTTPException, Header, BackgroundTasks
-)
-from fastapi.responses import HTMLResponse
+
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header, BackgroundTasks, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+
+# IMPORT diferido dentro del background job para que el import falle menos en cold start,
+# pero lo dejamos acá para que mypy no se enoje si lo querés mover.
+# from py_algo_starter.src.run_backtest import run_once  # NO: lo importamos dentro del job.
 
 app = FastAPI(title="Algo Reports Web Service")
 
-# === Config ===
-REPORTS_DIR = os.getenv("REPORTS_DIR", "/var/data/reports")
 UPLOAD_TOKEN = os.getenv("UPLOAD_TOKEN", "")
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
+REPORTS_DIR = os.environ.get("REPORTS_DIR", "/var/data/reports")
+WEB_BASE = os.environ.get("WEB_BASE", "").rstrip("/")  # opcional
 
 Path(REPORTS_DIR).mkdir(parents=True, exist_ok=True)
-
-# Servir archivos estáticos de reportes
-# Quedará disponible en: https://.../report/<archivo.html>
-app.mount("/report", StaticFiles(directory=REPORTS_DIR), name="report")
+app.mount("/reports", StaticFiles(directory=REPORTS_DIR), name="reports")
 
 
 def _latest_path() -> str:
-    """Ruta del alias al último reporte."""
     return os.path.join(REPORTS_DIR, "latest.html")
-
-
-def _html_page(body: str, status: int = 200) -> HTMLResponse:
-    """Wrapper simple para responder HTML."""
-    return HTMLResponse(body, status_code=status)
 
 
 @app.get("/", response_class=HTMLResponse)
 def index():
+    # Home simple con botón "Run now"
+    has_report = os.path.exists(_latest_path())
+    last_link = "/reports/latest.html" if has_report else "#"
+    last_txt = "Ver último reporte" if has_report else "Sin reporte aún"
+
+    html = f"""
+    <html>
+      <head>
+        <meta charset="utf-8"/>
+        <title>Algo Reports</title>
+        <style>
+          body {{ font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto; padding: 24px; }}
+          .btn {{ padding: 10px 16px; border-radius: 8px; border: 1px solid #444; background: #111; color: #fff; cursor:pointer; }}
+          .row {{ display:flex; gap:12px; align-items:center; }}
+          input[type="password"] {{ padding:10px; border-radius:8px; border:1px solid #ccc; width:320px; }}
+          a {{ color:#0af; }}
+        </style>
+      </head>
+      <body>
+        <h1>Algo Reports</h1>
+        <p><a href="/list" target="_blank">Listar reportes</a> · <a href="{last_link}" target="_blank">{last_txt}</a></p>
+        <hr/>
+        <h2>Ejecutar ahora</h2>
+        <form id="runForm" onsubmit="return false;">
+          <div class="row">
+            <input type="password" id="token" placeholder="Upload token" />
+            <button class="btn" onclick="runNow()">Run now</button>
+          </div>
+        </form>
+        <p id="msg"></p>
+
+        <script>
+        async function runNow() {{
+          const token = document.getElementById('token').value;
+          document.getElementById('msg').innerText = 'Ejecutando...';
+          try {{
+            const res = await fetch('/run-now', {{
+              method: 'POST',
+              headers: {{ 'X-Run-Token': token }}
+            }});
+            const data = await res.json();
+            if (res.ok) {{
+              document.getElementById('msg').innerText = 'OK: ' + (data.hint || 'running');
+            }} else {{
+              document.getElementById('msg').innerText = 'Error: ' + (data.detail || JSON.stringify(data));
+            }}
+          }} catch (e) {{
+            document.getElementById('msg').innerText = 'Error de red: ' + e;
+          }}
+        }}
+        </script>
+      </body>
+    </html>
     """
-    Muestra el último reporte (alias latest.html) si existe,
-    o un mensaje si aún no hay reportes.
-    """
-    lp = _latest_path()
-    if not os.path.exists(lp):
-        return _html_page("<h1>No hay reporte aún</h1><p>Subí uno o ejecutá /admin</p>", 404)
-    with open(lp, "r", encoding="utf-8") as f:
-        return HTMLResponse(f.read())
+    return HTMLResponse(html)
 
 
 @app.get("/list", response_class=HTMLResponse)
 def list_reports():
-    """
-    Lista todos los .html disponibles en REPORTS_DIR, del más nuevo al más viejo.
-    """
-    files = sorted(
-        [f for f in os.listdir(REPORTS_DIR) if f.endswith(".html")],
-        reverse=True
-    )
+    files = sorted([f for f in os.listdir(REPORTS_DIR)
+                   if f.endswith(".html")], reverse=True)
     if not files:
-        return _html_page("<h1>No hay reportes generados todavía</h1>", 404)
+        return HTMLResponse("<h1>No hay reportes generados todavía</h1>", status_code=404)
 
-    items = []
-    for fname in files:
-        # se sirven desde /report/<fname>
-        items.append(
-            f'<li><a href="/report/{fname}" target="_blank">{fname}</a></li>')
-
-    html = f"""
-    <html>
-      <head><meta charset="utf-8"><title>Reportes</title></head>
-      <body style="font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif">
-        <h1>Reportes disponibles</h1>
-        <ul>
-          {''.join(items)}
-        </ul>
-        <p><a href="/">Ver último reporte</a> — <a href="/admin">Admin</a></p>
-      </body>
-    </html>
-    """
-    return _html_page(html)
-
-
-@app.get("/admin", response_class=HTMLResponse)
-def admin_page():
-    """
-    Página simple con un botón que dispara /run-now.
-    No expone el token; el usuario lo ingresa manualmente.
-    """
-    html = """
-    <!doctype html>
-    <html>
-    <head>
-      <meta charset="utf-8"/>
-      <title>Runner – Admin</title>
-      <meta name="viewport" content="width=device-width, initial-scale=1"/>
-      <style>
-        body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:24px;max-width:780px;margin:auto}
-        .card{border:1px solid #ddd;border-radius:12px;padding:20px}
-        button{padding:12px 18px;border-radius:10px;border:1px solid #333;cursor:pointer}
-        .log{white-space:pre-wrap;background:#0b1020;color:#d6e1ff;padding:12px;border-radius:10px;margin-top:16px;display:none}
-        .ok{color:#0a7a3f}.err{color:#b00020}
-        input[type=password]{padding:10px;border-radius:8px;border:1px solid #ccc;width:100%;max-width:420px}
-        label{display:block;margin-top:12px;margin-bottom:6px}
-        a.button {display:inline-block;padding:8px 12px;border:1px solid #333;border-radius:10px;text-decoration:none}
-      </style>
-    </head>
-    <body>
-      <h1>Run Backtest</h1>
-      <p>Esta página permite ejecutar manualmente el backtest y publicar el <code>report.html</code>.</p>
-      <p><a class="button" href="/list" target="_blank">Ver lista de reportes</a></p>
-      <div class="card">
-        <label for="token">Admin token</label>
-        <input id="token" type="password" placeholder="ADMIN_TOKEN"/>
-
-        <div style="margin-top:16px">
-          <button id="runBtn">▶ Ejecutar ahora</button>
-        </div>
-        <div id="msg" style="margin-top:12px"></div>
-        <div id="log" class="log"></div>
-      </div>
-
-      <script>
-      const btn = document.getElementById('runBtn');
-      const msg = document.getElementById('msg');
-      const log = document.getElementById('log');
-
-      btn.onclick = async () => {
-        msg.textContent = 'Ejecutando...';
-        msg.className = '';
-        log.style.display='none'; log.textContent='';
-        const token = document.getElementById('token').value.trim();
-        try {
-          const r = await fetch('/run-now', {
-            method: 'POST',
-            headers: {'X-Admin-Token': token}
-          });
-          const j = await r.json();
-          if (!r.ok) throw new Error(j.detail || r.statusText);
-          msg.innerHTML = `✔ Ejecutado/En curso. Revisa <a href="/list" target="_blank">/list</a>.` +
-                          (j.public_url ? ` → <a href="${j.public_url}" target="_blank">abrir reporte</a>` : '');
-          msg.className='ok';
-          if (j.local_path) { log.style.display='block'; log.textContent = 'Guardado en: ' + j.local_path; }
-        } catch (e) {
-          msg.textContent = '✖ Error: ' + e.message;
-          msg.className='err';
-        }
-      };
-      </script>
-    </body>
-    </html>
-    """
-    return _html_page(html)
+    lis = "\n".join(
+        f'<li><a href="/reports/{f}" target="_blank">{f}</a></li>' for f in files)
+    html = f"<h1>Reportes disponibles</h1><ul>{lis}</ul><p><a href='/'>Home</a></p>"
+    return HTMLResponse(html)
 
 
 @app.post("/upload-report")
-async def upload_report(
-    file: UploadFile = File(...),
-    authorization: str | None = Header(None),
-    x_upload_token: str | None = Header(None),
-):
-    """
-    Sube un HTML y lo guarda con timestamp + alias latest.html.
-    Autenticación:
-      - Authorization: Bearer <UPLOAD_TOKEN>
-      - o bien X-Upload-Token: <UPLOAD_TOKEN>
-    Devuelve URL pública del archivo y del alias.
-    """
-    token_ok = False
-    if UPLOAD_TOKEN:
-        if authorization == f"Bearer {UPLOAD_TOKEN}":
-            token_ok = True
-        if x_upload_token == UPLOAD_TOKEN:
-            token_ok = True
-    if not token_ok:
+async def upload_report(file: UploadFile = File(...), x_upload_token: str | None = Header(None)):
+    # Seguridad simple por header X-Upload-Token
+    if not UPLOAD_TOKEN or x_upload_token != UPLOAD_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     content = await file.read()
-    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-    # histórico con timestamp + alias “latest.html” y “report.html” por compatibilidad
+    stamp = datetime.utcnow().strftime("%Y%m%d-%H%M")
     hist_path = os.path.join(REPORTS_DIR, f"report-{stamp}.html")
     latest_path = _latest_path()
-    default_alias = os.path.join(REPORTS_DIR, "report.html")
 
-    for path in (hist_path, latest_path, default_alias):
-        with open(path, "wb") as f:
-            f.write(content)
+    with open(hist_path, "wb") as f:
+        f.write(content)
+    with open(latest_path, "wb") as f:
+        f.write(content)
 
-    return {
-        "ok": True,
-        "saved": [
-            f"/report/{os.path.basename(hist_path)}",
-            "/report/latest.html",
-            "/report/report.html",
-        ],
-        "url": "/report/report.html"
-    }
+    return {"ok": True, "saved": [f"/reports/{os.path.basename(hist_path)}", "/reports/latest.html"]}
 
 
 @app.post("/run-now")
-def run_now(
-    background: BackgroundTasks,
-    x_admin_token: str = Header(None)
-):
-    """
-    Ejecuta el backtest en background y publica el HTML.
-    Autenticación:
-      - X-Admin-Token: <ADMIN_TOKEN>
-    Respuesta inmediata con hint; el upload lo hace el runner.
-    """
-    if not ADMIN_TOKEN or x_admin_token != ADMIN_TOKEN:
+def run_now(background: BackgroundTasks, x_run_token: str | None = Header(None)):
+    # Reutilizamos el mismo token del upload
+    if not UPLOAD_TOKEN or x_run_token != UPLOAD_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     Path(REPORTS_DIR).mkdir(parents=True, exist_ok=True)
 
     def _job():
-        # Intentar prioridad: paquete instalable (algo.*). Si no, fallback a src.run_backtest.
-        run_once_fn = None
-        try:
-            from algo.run_backtest import run_once as run_once_fn  # instalado vía pip VCS
-        except Exception:
-            try:
-                from src.run_backtest import run_once as run_once_fn  # runner local
-            except Exception as e:
-                # No se pudo importar ningún runner
-                raise RuntimeError(f"No se encontró run_once(): {e}")
+        # Import diferido para que funcione cuando el paquete está instalado
+        from py_algo_starter.src.run_backtest import run_once
+        # Usa el config por defecto del starter (o monta uno tuyo)
+        report_path, _public_url = run_once("config.yaml")
 
-        # Ejecuta usando el config por defecto en el Web Service (o el del starter si está accesible)
-        try:
-            result = run_once_fn("config.yaml")
-            # result puede traer: {"portfolio_value": .., "local_path": .., "public_url": ..}
-            # No retornamos nada aquí (BackgroundTasks no usa el retorno)
-            return result
-        except Exception as e:
-            # Log simple a archivo de errores dentro de REPORTS_DIR
-            errp = Path(
-                REPORTS_DIR) / f"run_error_{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.log"
-            errp.write_text(
-                f"[{datetime.utcnow().isoformat()}] {e}", encoding="utf-8")
+        # Si por alguna razón no subió automáticamente, garantizamos "latest.html" aquí
+        latest = _latest_path()
+        if report_path and os.path.exists(report_path):
+            with open(report_path, "rb") as fr, open(latest, "wb") as fw:
+                fw.write(fr.read())
 
     background.add_task(_job)
-
     stamp = datetime.utcnow().isoformat()
-    return {
-        "status": "running",
-        "hint": "revisa /list o /report/latest.html; el HTML se publicará al finalizar",
-        "started_at": stamp
-    }
+    return {"status": "running", "hint": "Revisá /list o /reports/latest.html", "started_at": stamp}
