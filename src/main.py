@@ -1,19 +1,21 @@
 
 import os
 from datetime import datetime
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header
+from fastapi import FastAPI, UploadFile, File, HTTPException, Header, BackgroundTasks, Header
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="Algo Reports Web Service")
-
+UPLOAD_TOKEN = os.getenv("UPLOAD_TOKEN", "")
 REPORTS_DIR = os.environ.get("REPORTS_DIR", "/var/data/reports")
 os.makedirs(REPORTS_DIR, exist_ok=True)
 
 app.mount("/reports", StaticFiles(directory=REPORTS_DIR), name="reports")
 
+
 def _latest_path():
     return os.path.join(REPORTS_DIR, "latest.html")
+
 
 @app.get("/", response_class=HTMLResponse)
 def index():
@@ -21,6 +23,7 @@ def index():
         return HTMLResponse("<h1>No hay reporte aún</h1>", status_code=404)
     with open(_latest_path(), "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
+
 
 @app.get("/list", response_class=HTMLResponse)
 def list_reports():
@@ -36,6 +39,7 @@ def list_reports():
         html.append(f'<li><a href="/reports/{f}" target="_blank">{f}</a></li>')
     html.append("</ul><p><a href='/'>Ver último reporte</a></p>")
     return HTMLResponse("\n".join(html))
+
 
 @app.post("/upload-report")
 async def upload_report(file: UploadFile = File(...), authorization: str | None = Header(None)):
@@ -53,3 +57,23 @@ async def upload_report(file: UploadFile = File(...), authorization: str | None 
             f.write(content)
 
     return {"ok": True, "saved": [f"/reports/{os.path.basename(hist_path)}", "/"]}
+
+
+@app.post("/run-now")
+def run_now(background: BackgroundTasks, x_run_token: str = Header(None)):
+    # seguridad simple reutilizando UPLOAD_TOKEN
+    if not UPLOAD_TOKEN or x_run_token != UPLOAD_TOKEN:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+
+    def _job():
+        from src.run_backtest import run_once   # import diferido
+        # usa el mismo config del starter
+        _, url = run_once("config.yaml")
+        # si no se pudo subir, al menos queda el archivo en REPORTS_DIR
+
+    background.add_task(_job)
+    # devolvemos una pista inmediata
+    stamp = datetime.utcnow().isoformat()
+    return {"status": "running", "hint": "check /list or open the latest /report/report.html", "started_at": stamp}

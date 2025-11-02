@@ -1,5 +1,6 @@
 fastapi==0.115.0
 uvicorn==0.30.6
-python-multipart==0.0.12   # para subir archivos
-aiofiles==24.1.0           # para servir/guardar archivos async
-
+python-multipart==0.0.12
+aiofiles==24.1.0
+# motor del backtest (importa run_once)
+py-algo-starter @ git+https://github.com/marcelodmartini/py-algo-starter@main
