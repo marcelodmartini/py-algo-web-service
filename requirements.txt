@@ -1,0 +1,8 @@
+fastapi==0.115.0
+uvicorn==0.30.6
+python-multipart==0.0.12
+aiofiles==24.1.0
+jinja2==3.1.6
+requests==2.32.5
+# Import the backtest package so /run-now can call run_once
+py-algo-starter @ git+https://github.com/marcelodmartini/py-algo-starter@main
