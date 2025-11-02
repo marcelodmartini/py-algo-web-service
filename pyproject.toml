@@ -1,33 +1,10 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "py-algo-starter"
+name = "py-algo-web-service"
 version = "0.1.0"
-description = "Starter de backtest + generación de reporte y upload al web-service"
-readme = "README.md"
+description = "FastAPI web service to receive and serve HTML reports and trigger on-demand runs."
+authors = [{name="Marcelo Martini"}]
 requires-python = ">=3.11"
-license = { text = "MIT" }  # SPDX simple para evitar el warning
-authors = [{ name = "Marcelo D. Martini" }]
-
-dependencies = [
-  "pandas==2.2.2",
-  "backtrader==1.9.78.123",
-  "quantstats==0.0.62",
-  "yfinance==0.2.43",
-  "ta==0.11.0",
-  "statsmodels==0.14.2",
-  "requests>=2.31.0"
-]
-
-[tool.setuptools]
-# Forzamos empaquetar SOLO el paquete de código
-packages = { find = { include = ["py_algo_starter*"], exclude = ["data*", "notebooks*", "images*"] } }
-
-# Si querés incluir archivos estáticos dentro del paquete (opcional):
-# [tool.setuptools.package-data]
-# "py_algo_starter" = ["templates/*.html", "assets/*"]
-
-[tool.setuptools.dynamic]
-# (No usamos dinámicos por ahora)

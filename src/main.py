@@ -14,13 +14,16 @@ app = FastAPI(title="Algo Reports Web Service")
 app.mount("/reports", StaticFiles(directory=REPORTS_DIR), name="reports")
 templates = Jinja2Templates(directory="templates")
 
+
 def _latest_path():
     return os.path.join(REPORTS_DIR, "latest.html")
+
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
     # Always render the dashboard (iframe attempts / which maps to latest.html via below handler as fallback)
     return templates.TemplateResponse("index.html", {"request": request})
+
 
 @app.get("/latest", response_class=HTMLResponse)
 def latest():
@@ -29,14 +32,18 @@ def latest():
     with open(_latest_path(), "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
 
+
 @app.get("/list", response_class=HTMLResponse)
 def list_reports():
-    files = sorted([f for f in os.listdir(REPORTS_DIR) if f.endswith(".html")], reverse=True)
+    files = sorted([f for f in os.listdir(REPORTS_DIR)
+                   if f.endswith(".html")], reverse=True)
     if not files:
         return HTMLResponse("<h1>No hay reportes generados todavía</h1>", status_code=404)
-    items = "\n".join([f'<li><a href="/reports/{f}" target="_blank">{f}</a></li>' for f in files])
+    items = "\n".join(
+        [f'<li><a href="/reports/{f}" target="_blank">{f}</a></li>' for f in files])
     html = f"<h1>Reportes disponibles</h1><ul>{items}</ul><p><a href='/'>Volver</a></p>"
     return HTMLResponse(html)
+
 
 @app.post("/upload-report")
 async def upload_report(file: UploadFile = File(...), x_upload_token: str | None = Header(default=None)):
@@ -51,6 +58,7 @@ async def upload_report(file: UploadFile = File(...), x_upload_token: str | None
         with open(path, "wb") as f:
             f.write(content)
     return {"ok": True, "filename": os.path.basename(hist_path), "url": f"/reports/{os.path.basename(hist_path)}"}
+
 
 @app.post("/run-now")
 def run_now(background: BackgroundTasks, x_run_token: str | None = Header(default=None)):
