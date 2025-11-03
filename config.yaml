@@ -1,19 +1,17 @@
 # ==========================================
-# CONFIGURACIÓN AUTOMÁTICA PARA BINANCE
-# Activa el fetch de datos reales (BTC/USDT)
+# CONFIGURACIÓN AUTOMÁTICA UNIVERSAL
+# Yahoo primero; si no hay datos y es cripto → Binance
 # ==========================================
 
 data:
-  csv_path: "data/BTCUSDT_1h.csv" # ruta local donde se guarda el CSV
+  csv_path: "data/auto.csv" # archivo de salida OHLCV
   auto_fetch: true # descarga automática si no existe
-  source: "crypto" # usa API de Binance
-  symbol: "BTC/USDT" # par de criptomoneda
-  exchange: "binance" # exchange para ccxt
-  timeframe: "1h" # intervalo de velas
-  interval: "1h" # mantiene compatibilidad con Yahoo
+  symbol: "SPY" # puede ser AAPL, SPY, QQQ, BTC, BTC/USDT, BTC-USD, etc.
+  interval: "1h" # intervalo para Yahoo
+  timeframe: "1h" # intervalo para Binance
   start: "2023-01-01" # fecha inicial
   end: null # hasta hoy
-  limit: 5000 # cantidad máxima de velas
+  limit: 5000 # velas máximas a pedir
   datetime_col: "datetime"
   tz: "UTC"
 
@@ -50,8 +48,8 @@ signals:
 # ------------------------------------------
 backtest:
   cash: 10000 # capital inicial
-  commission: 0.001 # comisión del exchange
-  stake_pct: 0.1 # porcentaje del capital por operación
+  commission: 0.001 # comisión por operación
+  stake_pct: 0.1 # % del capital por trade
   printlog: false
 
 # ------------------------------------------
@@ -71,4 +69,4 @@ risk:
 meta:
   project: "py-algo-web-service"
   version: "1.0.0"
-  description: "Backtest automático BTC/USDT 1h con RSI, EMA, MACD y ATR"
+  description: "Backtest automático con router Yahoo→Binance"

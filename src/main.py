@@ -9,7 +9,8 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Background
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
+from fastapi import Query
+import yaml
 import logging
 
 # ---------- Logging ----------
@@ -111,54 +112,53 @@ async def upload_report(file: UploadFile = File(...), x_upload_token: str | None
 
 
 # ---------- Run-now (background) ----------
+
+@app.post("/set-symbol")
+def set_symbol(symbol: str):
+    """Persiste símbolo en config.yaml."""
+    cfg_path = Path(CONFIG_PATH)
+    data = yaml.safe_load(cfg_path.read_text(
+        encoding="utf-8")) if cfg_path.exists() else {}
+    data.setdefault("data", {})
+    data["data"]["symbol"] = symbol.strip()
+    cfg_path.write_text(yaml.safe_dump(data, sort_keys=False,
+                        allow_unicode=True), encoding="utf-8")
+    return {"ok": True, "symbol": symbol}
+
+
 @app.post("/run-now")
-def run_now(background: BackgroundTasks, x_run_token: str | None = Header(default=None)):
+def run_now(background: BackgroundTasks, x_run_token: str | None = Header(default=None),
+            symbol: str | None = Query(default=None)):
     if not UPLOAD_TOKEN or x_run_token != UPLOAD_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     def _job():
         try:
-            # Log contexto
             log.info("== RUN START ==")
-            log.info(f"CWD: {Path.cwd()}")
-            log.info(f"REPORTS_DIR: {REPORTS_DIR}")
+            # Si viene query ?symbol=..., generamos un config temporal
+            cfg_file = CONFIG_PATH
+            if symbol:
+                cfg = yaml.safe_load(open(CONFIG_PATH, "r", encoding="utf-8"))
+                cfg.setdefault("data", {})
+                cfg["data"]["symbol"] = symbol.strip()
+                tmp = Path(REPORTS_DIR) / "config-run.yaml"
+                tmp.write_text(yaml.safe_dump(
+                    cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
+                cfg_file = str(tmp)
+                log.info(f"Override symbol via query: {symbol} → {cfg_file}")
+
+            from py_algo_starter import run_once
+            report_path, public_url = run_once(cfg_file)
             log.info(
-                f"CONFIG_PATH: {CONFIG_PATH} (exists={Path(CONFIG_PATH).exists()})")
-
-            # Validar config
-            if not Path(CONFIG_PATH).exists():
-                msg = f"No se encontró el archivo de configuración: {CONFIG_PATH}"
-                log.error(msg)
-                _write_html_status("Run error", msg, status=500)
-                return
-
-            # Ejecutar pipeline
-            from py_algo_starter import run_once  # type: ignore
-            log.info("Importado py_algo_starter.run_once OK, ejecutando...")
-
-            report_path, public_url = run_once(CONFIG_PATH)
-            log.info(
-                f"run_once() retornó report_path={report_path}, public_url={public_url}")
-
-            # Si por alguna razón no se subió, intentamos setear latest con lo que haya
+                f"run_once OK → report_path={report_path}, public_url={public_url}")
+            # fallback para latest.html si no se subió
             if report_path and Path(report_path).exists():
-                latest_path = _latest_path()
-                try:
-                    with open(report_path, "rb") as src, open(latest_path, "wb") as dst:
-                        dst.write(src.read())
-                    log.info(f"Actualizado latest.html desde {report_path}")
-                except Exception as e:
-                    log.warning(
-                        f"No se pudo actualizar latest desde report_path: {e}")
-
-            log.info("== RUN END OK ==")
-
+                with open(report_path, "rb") as src, open(_latest_path(), "wb") as dst:
+                    dst.write(src.read())
         except Exception as e:
-            # Dump stack trace a latest.html para verlo en el iframe
             tb = traceback.format_exc()
             log.error(f"RUN FAILED: {e}\n{tb}")
             _write_html_status("Run error", tb, status=500)
 
     background.add_task(_job)
-    stamp = datetime.utcnow().isoformat()
-    return {"status": "running", "started_at": stamp, "hint": "Revisá /list o el iframe en /"}
+    return {"status": "running"}
