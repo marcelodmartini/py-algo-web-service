@@ -4,16 +4,16 @@
 # ==========================================
 
 data:
-  csv_path: "data/auto.csv" # archivo de salida OHLCV
+  csv_path: "data/auto.csv" # ruta donde se guarda el CSV temporal
   auto_fetch: true # descarga automática si no existe
-  symbol: "SPY" # puede ser AAPL, SPY, QQQ, BTC, BTC/USDT, BTC-USD, etc.
+  symbol: "SPY" # ticker base (puede sobreescribirse por ?symbol= o /run-batch)
   interval: "1h" # intervalo para Yahoo
   timeframe: "1h" # intervalo para Binance
   start: "2023-01-01" # fecha inicial
   end: null # hasta hoy
-  limit: 5000 # velas máximas a pedir
-  datetime_col: "datetime"
-  tz: "UTC"
+  limit: 5000 # número máximo de velas
+  datetime_col: "datetime" # nombre de columna temporal
+  tz: "UTC" # zona horaria base de los datos
 
 # ------------------------------------------
 # INDICADORES A CALCULAR
@@ -47,10 +47,10 @@ signals:
 # PARÁMETROS DEL BACKTEST
 # ------------------------------------------
 backtest:
-  cash: 10000 # capital inicial
-  commission: 0.001 # comisión por operación
-  stake_pct: 0.1 # % del capital por trade
-  printlog: false
+  cash: 10000 # capital inicial (USD)
+  commission: 0.001 # comisión por operación (0.1%)
+  stake_pct: 0.1 # porcentaje de capital por operación
+  printlog: false # logs de operaciones (true para debug)
 
 # ------------------------------------------
 # GESTIÓN DE RIESGO
@@ -64,9 +64,13 @@ risk:
   take_profit_pct: 0.06
 
 # ------------------------------------------
-# METADATOS
+# METADATOS / DOCUMENTACIÓN
 # ------------------------------------------
 meta:
   project: "py-algo-web-service"
   version: "1.0.0"
-  description: "Backtest automático con router Yahoo→Binance"
+  description: >
+    Backtest automático universal:
+    - Acciones / ETFs vía Yahoo Finance
+    - Criptomonedas vía Binance si Yahoo no tiene datos
+    - Soporta ejecución única (/run-now) o múltiple (/run-batch)

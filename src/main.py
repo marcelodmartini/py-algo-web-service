@@ -10,8 +10,15 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi import Query
-import yaml
 import logging
+
+from pydantic import BaseModel
+import yaml
+
+
+class BatchReq(BaseModel):
+    symbols: list[str]  # e.g. ["AAPL","SPY","BTC","BTC/USDT","ETH"]
+
 
 # ---------- Logging ----------
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -126,39 +133,57 @@ def set_symbol(symbol: str):
     return {"ok": True, "symbol": symbol}
 
 
-@app.post("/run-now")
-def run_now(background: BackgroundTasks, x_run_token: str | None = Header(default=None),
-            symbol: str | None = Query(default=None)):
+@app.post("/run-batch")
+def run_batch(req: BatchReq, background: BackgroundTasks, x_run_token: str | None = Header(default=None)):
     if not UPLOAD_TOKEN or x_run_token != UPLOAD_TOKEN:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     def _job():
         try:
-            log.info("== RUN START ==")
-            # Si viene query ?symbol=..., generamos un config temporal
-            cfg_file = CONFIG_PATH
-            if symbol:
-                cfg = yaml.safe_load(open(CONFIG_PATH, "r", encoding="utf-8"))
-                cfg.setdefault("data", {})
-                cfg["data"]["symbol"] = symbol.strip()
-                tmp = Path(REPORTS_DIR) / "config-run.yaml"
-                tmp.write_text(yaml.safe_dump(
-                    cfg, sort_keys=False, allow_unicode=True), encoding="utf-8")
-                cfg_file = str(tmp)
-                log.info(f"Override symbol via query: {symbol} → {cfg_file}")
+            from py_algo_starter import run_once  # type: ignore
+            stamp = datetime.utcnow().strftime("%Y%m%d-%H%M")
+            links = []
 
-            from py_algo_starter import run_once
-            report_path, public_url = run_once(cfg_file)
-            log.info(
-                f"run_once OK → report_path={report_path}, public_url={public_url}")
-            # fallback para latest.html si no se subió
-            if report_path and Path(report_path).exists():
-                with open(report_path, "rb") as src, open(_latest_path(), "wb") as dst:
+            for sym in req.symbols:
+                # clonar config y sobrescribir símbolo
+                base_cfg = {}
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    base_cfg = yaml.safe_load(f)
+                base_cfg.setdefault("data", {})
+                base_cfg["data"]["symbol"] = sym.strip()
+                tmp_cfg_path = os.path.join(
+                    REPORTS_DIR, f"cfg-{stamp}-{sym.replace('/', '_').replace('-', '_')}.yaml")
+                with open(tmp_cfg_path, "w", encoding="utf-8") as f:
+                    yaml.safe_dump(base_cfg, f, sort_keys=False,
+                                   allow_unicode=True)
+
+                # correr
+                report_path, public_url = run_once(tmp_cfg_path)
+
+                # renombrar con sufijo de símbolo para no pisar
+                if report_path and os.path.exists(report_path):
+                    out_name = f"report-{stamp}-{sym.replace('/', '_').replace('-', '_')}.html"
+                    out_path = os.path.join(REPORTS_DIR, out_name)
+                    with open(report_path, "rb") as src, open(out_path, "wb") as dst:
+                        dst.write(src.read())
+                    links.append(out_name)
+
+            # construir índice batch
+            if links:
+                items = "\n".join(
+                    [f'<li><a href="/reports/{name}" target="_blank">{name}</a></li>' for name in links])
+                index_html = f"<h1>Batch {stamp}</h1><ul>{items}</ul><p><a href='/'>Volver</a></p>"
+                batch_name = f"batch-{stamp}.html"
+                batch_path = os.path.join(REPORTS_DIR, batch_name)
+                with open(batch_path, "w", encoding="utf-8") as f:
+                    f.write(index_html)
+                # actualizar latest.html al índice batch
+                with open(batch_path, "rb") as src, open(_latest_path(), "wb") as dst:
                     dst.write(src.read())
+
         except Exception as e:
             tb = traceback.format_exc()
-            log.error(f"RUN FAILED: {e}\n{tb}")
-            _write_html_status("Run error", tb, status=500)
+            _write_html_status("Run-batch error", tb, status=500)
 
     background.add_task(_job)
-    return {"status": "running"}
+    return {"status": "running", "count": len(req.symbols)}
