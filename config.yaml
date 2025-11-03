@@ -1,33 +1,26 @@
-# === Fuente de datos ===
+# ==========================================
+# CONFIGURACIÓN AUTOMÁTICA PARA BINANCE
+# Activa el fetch de datos reales (BTC/USDT)
+# ==========================================
+
 data:
-  # Elegí una:
-  # source: "crypto"     # usa Binance vía ccxt
-  source: "yahoo" # usa Yahoo Finance (yfinance)
-
-  # --- Si usás CRYPTO (descomentar si cambiás a crypto) ---
-  # symbol: "BTC/USDT"
-  # exchange: "binance"
-  # timeframe: "1h"       # 1h, 4h, d
-  # interval: "1h"        # no se usa en crypto, pero se mantiene por compat
-  # start: "2023-01-01"
-  # end: null
-  # limit: 5000
-
-  # --- Si usás YAHOO ---
-  symbol: "SPY"
-  interval: "1h" # 1m/5m/15m/1h/1d/1wk/1mo (según Yahoo)
-  start: "2023-01-01"
-  end: null
-
-  # Comunes
   csv_path: "data/BTCUSDT_1h.csv" # ruta local donde se guarda el CSV
-  auto_fetch: true
-  timeframe: "1h" # para el resample interno
+  auto_fetch: true # descarga automática si no existe
+  source: "crypto" # usa API de Binance
+  symbol: "BTC/USDT" # par de criptomoneda
+  exchange: "binance" # exchange para ccxt
+  timeframe: "1h" # intervalo de velas
+  interval: "1h" # mantiene compatibilidad con Yahoo
+  start: "2023-01-01" # fecha inicial
+  end: null # hasta hoy
+  limit: 5000 # cantidad máxima de velas
   datetime_col: "datetime"
   tz: "UTC"
 
-# === Indicadores / señales (valores ejemplo) ===
-signals:
+# ------------------------------------------
+# INDICADORES A CALCULAR
+# ------------------------------------------
+features:
   rsi:
     period: 14
   ema:
@@ -37,16 +30,45 @@ signals:
     fast: 12
     slow: 26
     signal: 9
+  atr:
+    period: 14
 
-# === Backtest ===
+# ------------------------------------------
+# ESTRATEGIA DE SEÑALES / PESOS
+# ------------------------------------------
+signals:
+  weights:
+    rsi: 0.3
+    ema: 0.4
+    macd: 0.3
+  thresholds:
+    long_min_score: 0.6 # entrada long
+    exit_score: 0.3 # salida (take profit / stop)
+
+# ------------------------------------------
+# PARÁMETROS DEL BACKTEST
+# ------------------------------------------
 backtest:
-  cash: 10000
-  commission: 0.001
+  cash: 10000 # capital inicial
+  commission: 0.001 # comisión del exchange
+  stake_pct: 0.1 # porcentaje del capital por operación
   printlog: false
 
-# === Riesgo (ejemplo) ===
+# ------------------------------------------
+# GESTIÓN DE RIESGO
+# ------------------------------------------
 risk:
-  stop_loss_pct: 0.03
-  take_profit_pct: 0.06
+  atr_stop_mult: 2.0
+  atr_trail_mult: 1.5
   time_stop_bars: 48
   partial_tp: false
+  stop_loss_pct: 0.03
+  take_profit_pct: 0.06
+
+# ------------------------------------------
+# METADATOS
+# ------------------------------------------
+meta:
+  project: "py-algo-web-service"
+  version: "1.0.0"
+  description: "Backtest automático BTC/USDT 1h con RSI, EMA, MACD y ATR"
