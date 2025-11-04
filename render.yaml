@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: py-algo-web-service
+    env: python
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn src.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: TZ
+        value: America/Argentina/Buenos_Aires
+      - key: REPORTS_DIR
+        value: /var/data/reports
+      # Set this securely in the Render UI:
+      # - key: UPLOAD_TOKEN
+      #   value: ...
+
+    disk:
+      name: reports-disk
+      mountPath: /var/data/reports
+      sizeGB: 2

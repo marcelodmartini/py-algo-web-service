@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Algo Reports – Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      color-scheme: dark light
+    }
+
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 24px;
+      background: #0e0e10;
+      color: #e9e9ee
+    }
+
+    h1 {
+      margin: 0 0 8px
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr))
+    }
+
+    .card {
+      background: #1a1b1e;
+      border: 1px solid #2a2c30;
+      border-radius: 12px;
+      padding: 16px
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      opacity: .85;
+      margin: 8px 0 4px
+    }
+
+    input[type="text"],
+    textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid #2a2c30;
+      background: #101114;
+      color: #e9e9ee;
+      font-family: inherit
+    }
+
+    textarea {
+      min-height: 96px;
+      resize: vertical
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap
+    }
+
+    button {
+      padding: 10px 14px;
+      border-radius: 8px;
+      border: 1px solid #2a2c30;
+      background: #2a2f3a;
+      color: #e9e9ee;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: #3a68ff;
+      border-color: #3256cc
+    }
+
+    button:disabled {
+      opacity: .6;
+      cursor: not-allowed
+    }
+
+    .muted {
+      opacity: .75;
+      font-size: 12px
+    }
+
+    .ok {
+      color: #67e480
+    }
+
+    .err {
+      color: #ff6b6b
+    }
+
+    iframe {
+      width: 100%;
+      height: 70vh;
+      border: 1px solid #2a2c30;
+      border-radius: 12px;
+      background: #fff
+    }
+
+    code {
+      background: #212226;
+      padding: 2px 6px;
+      border-radius: 6px
+    }
+
+    .tag {
+      display: inline-block;
+      background: #2a2c30;
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 12px;
+      margin-right: 6px
+    }
+
+    .links a {
+      color: #9bb1ff
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Algo Reports</h1>
+  <p class="muted">Router automático: <span class="tag">Yahoo</span> → <span class="tag">Binance</span>. Usá cualquier
+    <code>symbol</code>: AAPL, SPY, QQQ, BTC, BTC/USDT, BTC-USD…</p>
+
+  <div class="grid">
+    <!-- Auth & util -->
+    <div class="card">
+      <h3>1) Autorización & Utilidades</h3>
+      <label>UPLOAD_TOKEN (se guarda localmente para futuros clicks)</label>
+      <input type="text" id="token" placeholder="pegá tu token" />
+      <div class="row" style="margin-top:8px">
+        <button onclick="saveToken()">Guardar token</button>
+        <button onclick="pingHealth()">/health</button>
+        <button onclick="showDebug()">/debug-env</button>
+      </div>
+      <pre id="diag" class="muted" style="white-space:pre-wrap; margin-top:8px"></pre>
+    </div>
+
+    <!-- Run único -->
+    <div class="card">
+      <h3>2) Run único</h3>
+      <label>Símbolo (ticker)</label>
+      <input type="text" id="symbol" placeholder="Ej.: AAPL / SPY / BTC / BTC/USDT / BTC-USD" />
+      <div class="row" style="margin-top:8px">
+        <button class="primary" onclick="runNow()">Run now</button>
+        <button onclick="persistSymbol()">/set-symbol (persistir)</button>
+      </div>
+      <p class="muted" style="margin-top:8px">El router intentará Yahoo primero; si no hay datos y parece cripto, prueba
+        en Binance (/USDT → /USD → /BUSD).</p>
+      <pre id="oneStatus" style="white-space:pre-wrap; margin-top:8px"></pre>
+    </div>
+
+    <!-- Batch -->
+    <div class="card">
+      <h3>3) Run batch (varios tickers)</h3>
+      <label>Lista de símbolos (separados por comas o saltos de línea)</label>
+      <textarea id="batchSymbols" placeholder="AAPL, SPY, QQQ, BTC, ETH, BTC/USDT"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="primary" onclick="runBatch()">Run batch</button>
+        <button onclick="loadDemo()">Cargar ejemplo</button>
+      </div>
+      <pre class="muted"
+        style="white-space:pre-wrap; margin-top:8px">Crea un HTML por símbolo y un índice batch que queda como latest.html</pre>
+      <pre id="batchStatus" style="white-space:pre-wrap; margin-top:8px"></pre>
+    </div>
+
+    <!-- Reportes -->
+    <div class="card">
+      <h3>4) Reportes</h3>
+      <div class="row">
+        <button onclick="refreshIframe()">🔄 Refrescar</button>
+        <button onclick="openList()">📜 /list</button>
+      </div>
+      <p class="muted">Se muestra <code>/reports/latest.html</code>. Usá /list para abrir históricos o pestañas por
+        símbolo.</p>
+      <iframe id="reportFrame" src="/reports/latest.html"></iframe>
+    </div>
+  </div>
+
+  <div class="card links" style="margin-top:16px">
+    <strong>Enlaces útiles:</strong>
+    <div class="row" style="margin-top:8px">
+      <a href="/reports/latest.html" target="_blank">Abrir latest.html en nueva pestaña</a>
+      <a href="/list" target="_blank" style="margin-left:12px">Ver lista completa</a>
+    </div>
+  </div>
+
+  <script>
+    const $ = sel => document.querySelector(sel);
+    const BASE = location.origin;
+
+    // token en localStorage
+    function loadToken() {
+      const t = localStorage.getItem("UPLOAD_TOKEN") || "";
+      $("#token").value = t;
+      return t;
+    }
+    function saveToken() {
+      localStorage.setItem("UPLOAD_TOKEN", $("#token").value.trim());
+      $("#diag").textContent = "Token guardado.";
+    }
+
+    async function pingHealth() {
+      const r = await fetch("/health");
+      $("#diag").textContent = r.ok ? "Health: ok" : "Health: fail";
+    }
+    async function showDebug() {
+      const r = await fetch("/debug-env");
+      $("#diag").textContent = r.ok ? await r.text() : "No se pudo leer /debug-env";
+    }
+
+    // Run único
+    async function runNow() {
+      const token = loadToken();
+      const sym = ($("#symbol").value || "").trim();
+      if (!token) { $("#oneStatus").textContent = "⚠️ Falta UPLOAD_TOKEN"; return; }
+      const url = sym ? `/run-now?symbol=${encodeURIComponent(sym)}` : `/run-now`;
+      $("#oneStatus").textContent = "Ejecutando…";
+      try {
+        const r = await fetch(url, { method: "POST", headers: { "X-Run-Token": token } });
+        const txt = await r.text();
+        $("#oneStatus").textContent = r.ok ? `OK: ${txt}` : `Error ${r.status}: ${txt}`;
+        refreshIframe();
+      } catch (e) {
+        $("#oneStatus").textContent = "Error: " + e;
+      }
+    }
+
+    // Persistir símbolo en config.yaml
+    async function persistSymbol() {
+      const sym = ($("#symbol").value || "").trim();
+      if (!sym) { $("#oneStatus").textContent = "⚠️ Ingresá un símbolo"; return; }
+      try {
+        const r = await fetch("/set-symbol", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol: sym })
+        });
+        const txt = await r.text();
+        $("#oneStatus").textContent = r.ok ? `Guardado: ${txt}` : `Error ${r.status}: ${txt}`;
+      } catch (e) {
+        $("#oneStatus").textContent = "Error: " + e;
+      }
+    }
+
+    // Batch
+    async function runBatch() {
+      const token = loadToken();
+      if (!token) { $("#batchStatus").textContent = "⚠️ Falta UPLOAD_TOKEN"; return; }
+      const raw = ($("#batchSymbols").value || "");
+      // admite comas o saltos de línea
+      const symbols = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+      if (!symbols.length) { $("#batchStatus").textContent = "⚠️ Ingresá al menos un símbolo"; return; }
+      $("#batchStatus").textContent = "Ejecutando batch… (" + symbols.length + " símbolos)";
+      try {
+        const r = await fetch("/run-batch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Run-Token": token },
+          body: JSON.stringify({ symbols })
+        });
+        const txt = await r.text();
+        $("#batchStatus").textContent = r.ok ? `OK: ${txt}` : `Error ${r.status}: ${txt}`;
+        refreshIframe();
+      } catch (e) {
+        $("#batchStatus").textContent = "Error: " + e;
+      }
+    }
+
+    function loadDemo() {
+      $("#batchSymbols").value = "AAPL, SPY, QQQ, BTC, BTC/USDT, ETH";
+    }
+
+    function refreshIframe() {
+      const fr = $("#reportFrame");
+      fr.src = "/reports/latest.html?ts=" + Date.now();
+    }
+
+    function openList() {
+      window.open("/list", "_blank");
+    }
+
+    // init
+    loadToken();
+  </script>
+</body>
+
+</html>
